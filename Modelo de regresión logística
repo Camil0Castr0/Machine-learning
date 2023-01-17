@@ -1,0 +1,116 @@
+library(readr)
+library(tidyverse)
+
+df<- read_csv("Data Files/2. ST Academy - Classification models resource files/House-Price.csv")
+
+summary(df)
+  
+
+
+
+ggplot(data = df,mapping = aes(y=n_hot_rooms))+geom_boxplot(outlier.colour = 'red')
+
+ggplot(data=df,mapping = aes(x=Sold,y=rainfall))+geom_point()
+
+ggplot(data=df,mapping = aes(x=airport))+geom_bar(fill=c('purple','orange'))
+
+
+
+## Tratamiento de datos atipicos
+
+uv <- quantile(df$n_hot_rooms,0.99)*3
+df$n_hot_rooms[df$n_hot_rooms>uv] <-uv
+summary(df$n_hot_rooms)
+
+lv <- quantile(df$rainfall,0.01)*0.3
+df$rainfall[df$rainfall<lv] <- lv
+summary(df$rainfall)
+
+## Manipulacion de datos faltantes
+
+mean(df$n_hos_beds,na.rm = T)
+  
+which(is.na(df$n_hos_beds))
+df$n_hos_beds[is.na(df$n_hos_beds)] <- mean(df$n_hos_beds,na.rm = T)
+
+summary(df$n_hos_beds)
+
+## transformacion y eliminacion de columnas
+
+df$avg_dist <- (df$dist1+df$dist2+df$dist3+df$dist4)/4
+
+
+df <- df[,-6:-9]
+df <- df[,-13]
+
+## Creacion de variables ficticcias
+
+install.packages("fastDummies")
+
+library(fastDummies)
+
+df <- dummy.data.frame(df)
+
+df <- dummy_cols(df,  select_columns = c("airport","waterbody"))
+
+df <- df[,-8]
+df <- df[,-10]
+df <- df[,-14]
+df <- df[,-17]
+
+# MODELO DE REGRESION LOGISTICA SIMPLE
+
+glm.fit <- glm(Sold~price,data=df,family = binomial)
+summary(glm.fit)
+
+# MODELO DE REGRESION LOGISTICA MULTIPLE
+
+glm.mul <- glm(Sold~.,data=df,family = binomial)
+summary(glm.mul)
+
+# MATRIZ DE CONFUSION Y VERIFICACION DE CALIDAD DEL MODELO
+
+glm_prob <- predict(glm.mul,type='response')
+
+glm_pred <- rep(0,506)
+
+glm_pred[glm_prob>0.5]= 1
+
+table(glm_pred,df$Sold)
+
+library(caret)
+
+confusionMatrix(as.factor(glm_pred),as.factor(df$Sold))
+
+# Seleccion del mejor modelo
+## backward quita las variables con el menor valor AIC (indicador sin referencia)
+### AIC ...  SI el AIC disminuye es conveniente quitar la variable seleccionada
+
+step(glm.mul,direction = 'backward')
+
+# DeterminaciÃ³n del umbral
+
+library(ROCR)
+
+ROCpred <- prediction(glm_prob,df$Sold)
+ROCpref <-performance(ROCpred,'tpr','fpr') 
+plot(ROCpref,colorize=T,print.cutoffs.at=seq(0.1,by=0.1))
+
+
+library(pROC)
+
+roc <- roc(df$Sold,glm_prob,auc=T,ci=T)
+print(roc)
+
+plot.roc(roc,legacy.axes = T,print.thres = 'best',print.auc = T,auc.polygon = F,max.auc.polygon = F,
+         max.auc.polygon.col = 'gainsboro',col=2,grid=T)
+
+# VisualizaciÃ³n modelo
+library(ggplot2)
+
+indice <- seq(1:length(df$Sold))
+ggplot(data=df,mapping = aes(x=indice,y=glm_prob))+
+  geom_point(aes(color=as.numeric(Sold)),alpha=1,shape=3)+
+  geom_hline(yintercept = 0.5,linetype=2)+
+  scale_color_gradient(low='#152AEB',high='#EB0119')+
+  theme_bw()+theme(legend.position = 'none')
