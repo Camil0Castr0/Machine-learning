@@ -1,0 +1,181 @@
+library(readr)
+df<- read_csv("Data Files/1. ST Academy - Crash course and Regression files/House_Price.csv")
+
+str(df)
+
+summary(df)
+
+pairs(~price +crime_rate+n_hot_rooms+rainfall,data=df)
+
+# Modificar valores atipicos
+
+uv=3*quantile(df$n_hot_rooms,0.99)
+
+df$n_hot_rooms[df$n_hot_rooms>uv] <- uv
+
+summary(df$n_hot_rooms)
+
+lv=0.3*quantile(df$rainfall,0.01)
+
+df$rainfall[df$rainfall<lv] <- lv 
+
+summary(df$rainfall)
+
+# Modificar valores nulos
+
+which(is.na(df$n_hos_beds))
+
+df$n_hos_beds[is.na(df$n_hos_beds)] <- mean(df$n_hos_beds,na.rm = T)
+
+# Transformacion de datos
+
+df$crime_rate <- log(1+df$crime_rate)
+
+df$avg_dist <- (df$dist1+df$dist2+df$dist3+df$dist4)/4
+
+df <- df[,-7:-10]
+df<- df[,-14]
+
+# Creacion de variables ficticcias
+
+install.packages("dummies")
+library(dummies)
+
+df <- dummy.data.frame(df)
+
+df <- df[,-9]
+df <- df[,-14]
+
+# Matriz de correlaciÃ³n
+
+round(cor(df),2)
+
+df <- df[,-16]
+
+modelo1 <- lm(price~room_num,data=df)
+summary(modelo1)
+
+
+# Modelo lineal multiple
+
+modelo_multi <- lm(price~.,data=df)
+summary(modelo_multi)
+
+
+# train and test
+
+library(caTools)
+
+set.seed(0)
+
+split=sample.split(df,SplitRatio = 0.8)
+training_set=subset(df,split==T)
+test_set=subset(df,split==F)
+
+
+lm_a=lm(price~.,training_set)
+
+train_a=predict(lm_a,training_set)
+test_a=predict(lm_a,test_set)
+
+mean((training_set$price-train_a)^2)
+mean((test_set$price-test_a)^2)
+
+
+# Best Subset Selection
+
+library(leaps)
+
+lm_best <- regsubsets(price~.,data=df,nvmax = 15)
+summary(lm_best)
+summary(lm_best)$adjr2
+which.max(summary(lm_best)$adjr2)
+
+coef(lm_best,8)
+
+
+##forward
+
+lm_forward <- regsubsets(price~.,data=df,nvmax = 15,method = "forward")
+summary(lm_forward)
+which.max(summary(lm_forward)$adjr2)
+coef(lm_forward,8)
+
+
+##backward
+
+lm_backward <- regsubsets(price~.,data=df,nvmax = 15,method = "backward")
+summary(lm_backward)
+which.max(summary(lm_backward)$adjr2)
+coef(lm_backward,8)
+
+
+# Regresion de cresta y lazo
+
+library(glmnet)
+
+x=model.matrix(price~.,data=df)[,-1]
+x
+
+y=df$price
+
+##Cresta
+
+lm_ridge <- glmnet(x,y,alpha = 0)
+summary(lm_ridge)
+
+#coef(lm_ridge)
+
+lm_ridge$lambda
+
+plot(lm_ridge,'lambda')
+
+cv_fit <- cv.glmnet(x,y,alpha=0)
+plot(cv_fit)
+
+opt_lambda <- cv_fit$lambda.min
+opt_lambda
+
+log(opt_lambda)
+
+coef(lm_ridge)[,which(lm_ridge$lambda==opt_lambda)]
+
+plot(lm_ridge,'lambda')
+abline(v=log(opt_lambda),col='red',lty=3)
+
+tss <- sum((y-mean(y))^2)
+y_a <- predict(lm_ridge,s=opt_lambda,newx = x)
+rss <- sum((y_a-y)^2)
+rsq <- 1-rss/tss
+rsq
+
+
+## lazo
+
+lm_lasso <- glmnet(x,y,alpha = 1)
+summary(lm_ridge)
+
+coef(lm_ridge)
+
+#lm_ridge$lambda
+
+plot(lm_ridge,'lambda')
+
+cv_las <- cv.glmnet(x,y,alpha=1)
+plot(cv_las)
+
+opt_lambda2 <- cv_las$lambda.min
+opt_lambda2
+
+log(opt_lambda)
+
+coef(lm_lasso)[,which(lm_lasso$lambda==opt_lambda2)]
+
+plot(lm_lasso,'lambda')
+abline(v=log(opt_lambda2),col='red',lty=3)
+
+tss1 <- sum((y-mean(y))^2)
+y_a1 <- predict(lm_lasso,s=opt_lambda2,newx = x)
+rss1 <- sum((y_a-y)^2)
+rsq1 <- 1-rss1/tss1
+rsq1
